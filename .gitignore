@@ -1,3 +1,11 @@
+# custom 
+.idea/
+.vscode/
+val.jsonl.zst
+00.jsonl.zst
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -12,7 +20,7 @@ build/
 develop-eggs/
 dist/
 downloads/
-eggs/
+eggs/x
 .eggs/
 lib/
 lib64/
