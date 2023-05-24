@@ -3,7 +3,8 @@
 .vscode/
 val.jsonl.zst
 00.jsonl.zst
-
+00.jsonl
+val.jsonl
 
 
 # Byte-compiled / optimized / DLL files
