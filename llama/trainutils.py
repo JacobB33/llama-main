@@ -15,6 +15,17 @@ class TextDataset(Dataset):
         data, labels = get_batch(self.data, idx* self.tokens_per_seq, self.tokens_per_seq)
         return data, labels
 
+class DumbDataset(Dataset):
+    def __init__(self, flat_data: torch.Tensor, sequence_len: int):
+        self.data = flat_data # .contiguous()
+        self.seq_len = sequence_len
+    def __len__(self):
+        return (len(self.data) -1) // self.seq_len
+    def __getitem__(self, idx):
+        data = self.data[idx * self.seq_len: (idx + 1) * self.seq_len]
+        targets = self.data[idx * self.seq_len + 1: (idx + 1) * self.seq_len + 1]
+        return data, targets
+
 def batchify(data: torch.Tensor, batch_size: int):
     """Creates a bach matrix of batch_size x num batches
     Args:
