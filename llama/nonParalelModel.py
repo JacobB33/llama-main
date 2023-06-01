@@ -4,6 +4,7 @@
 from typing import Optional, Tuple
 from dataclasses import dataclass
 import math
+import xformers.ops as xops
 
 import torch
 from torch import nn
@@ -72,45 +73,41 @@ def apply_rotary_emb(
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
-
+def xformers_attn(xq, xk, xv, is_causal):
+    # NOTE: in another project noticed F.scaled_dot_product gave different
+    # results than nn.MultiheadAttention. That is why we have xformers option.
+    # NOTE: Why is this not tri-u? They did this in the xformers example, but need to Investigate.
+    # NOTE: We are casting xq and xk to bfloats -- need to experiment with instead casting xv to float.
+    # NOTE: Should we not initialize the mask before return statement?
+    mask = None
+    if is_causal:
+        mask = xops.LowerTriangularMask()
+    return xops.memory_efficient_attention(
+        xq, xk, xv, attn_bias=mask
+    )
+    
 class Attention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
-
-        self.n_local_heads = args.n_heads # // fs_init.get_model_parallel_world_size()
+        self.n_local_heads = args.n_heads
         self.head_dim = args.dim // args.n_heads
 
-        self.wq = nn.Linear(
+        self.in_proj = nn.Linear(
             args.dim,
-            args.n_heads * self.head_dim,
+            3 * args.n_heads * self.head_dim,
             bias=False,
         )
-        self.wk = nn.Linear(
-            args.dim,
-            args.n_heads * self.head_dim,
-            bias=False,
-        )
-        self.wv = nn.Linear(
-            args.dim,
-            args.n_heads * self.head_dim,
-            bias=False,
-        )
-        self.wo = nn.Linear(
+        self.out_proj = nn.Linear(
             args.n_heads * self.head_dim,
             args.dim,
             bias=False,
         )
-
-        self.cache_k = torch.zeros(
-            (args.max_batch_size, args.max_seq_len, self.n_local_heads, self.head_dim)
-        ).cuda()
-        self.cache_v = torch.zeros(
-            (args.max_batch_size, args.max_seq_len, self.n_local_heads, self.head_dim)
-        ).cuda()
+        
+        self.atten_fn = xformers_attn
 
     def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
         bsz, seqlen, _ = x.shape
-        xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
+        xq, xk, xv = self.in_proj(x).chunk(3, dim=-1)
 
         xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         xk = xk.view(bsz, seqlen, self.n_local_heads, self.head_dim)
@@ -118,28 +115,16 @@ class Attention(nn.Module):
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
-        self.cache_k = self.cache_k.to(xq)
-        self.cache_v = self.cache_v.to(xq)
+        output = self.atten_fn(
+            xq.to(xv.dtype), 
+            xk.to(xv.dtype), 
+            xv, 
+            is_causal=True
+        )
 
-        self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
-        self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+        output = output.view(bsz, seqlen, -1)
 
-        keys = self.cache_k[:bsz, : start_pos + seqlen]
-        values = self.cache_v[:bsz, : start_pos + seqlen]
-
-        xq = xq.transpose(1, 2)
-        keys = keys.transpose(1, 2)
-        values = values.transpose(1, 2)
-        scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-        if mask is not None:
-            scores = scores + mask  # (bs, n_local_heads, slen, cache_len + slen)
-        scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-        output = torch.matmul(scores, values)  # (bs, n_local_heads, slen, head_dim)
-        output = output.transpose(
-            1, 2
-        ).contiguous().view(bsz, seqlen, -1)
-
-        return self.wo(output)
+        return self.out_proj(output)
 
 
 class FeedForward(nn.Module):

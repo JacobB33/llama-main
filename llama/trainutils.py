@@ -1,4 +1,9 @@
-from torch.utils.data import Dataset
+import itertools
+
+import tqdm
+from tokenizer import Tokenizer
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from typing import List, Dict
 import json
 import numpy as np
@@ -54,3 +59,22 @@ def loadSentencesFromJson(path_to_json: str) -> List[str]:
         record = json.loads(line)
         sentences.append(record['text'])
     return sentences
+
+
+def getTrainDataLoader(vocab: Tokenizer, data_path: str, batch_size: int, seq_len: int, parallel=False):
+    print('loading json')
+    train_sentences = loadSentencesFromJson(data_path)[:1000]
+    print('encoding sentences')
+    train_encodings = itertools.chain.from_iterable([vocab.encode(s, bos=True, eos=True) for s in tqdm.tqdm(train_sentences)])
+    print('creating dataset')
+    flattened_train = torch.tensor(list(train_encodings)).flatten()
+    print(len(flattened_train))
+    # batched_train = batchify(flattened_train, args.seq_len)
+    # train_ds = TextDataset(batched_train, args.bptt)
+    train_ds = DumbDataset(flattened_train, seq_len)
+    if not parallel:
+        return DataLoader(train_ds, batch_size=batch_size, shuffle=False)
+    else:
+        return DataLoader(
+            train_ds, batch_size=batch_size, pin_memory=True, 
+            shuffle=False, sampler=DistributedSampler(train_ds))

@@ -51,14 +51,16 @@ def train(model: nn.Module, train_loader: DataLoader, vocab_len: int):
             optimizer.zero_grad()
             preds = model(data, 0)
             loss = criterion(preds.reshape(-1, vocab_len), labels.flatten())
+            
             loss.backward(retain_graph=True)
-            # nn.utils.clip_grad_norm_(model.parameters(), args.clip)
             optimizer.step()
+            
             losses += loss.detach().item()
             if(i % 20 == 0):
                 print(loss.item())
-            print(torch.cuda.memory_allocated())
-            del loss, data, labels
+            # del loss, data, labels
+            #print(f'memory =  {torch.cuda.memory_allocated()/ 1e9} gb')
+
         losses /= len(train_loader)
         print(f'For epoch {epoch}, there was an average loss of {losses}')
         total_losses.append(losses)
@@ -68,7 +70,10 @@ def train(model: nn.Module, train_loader: DataLoader, vocab_len: int):
 
 def main():
     modelArgs = ModelArgs()
-    modelArgs.n_layers = 4
+    modelArgs.n_layers = 1
+    modelArgs.n_heads = 1
+    dim = 128
+    
     modelArgs.max_batch_size = args.batch_size
     vocab = Tokenizer(model_path=args.tokinizer_path)
     modelArgs.vocab_size = vocab.n_words
