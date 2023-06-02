@@ -8,10 +8,11 @@ import torch
 from llama.tokenizer import Tokenizer
 from llama.model import Transformer
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class LLaMA:
     def __init__(self, model: Transformer, tokenizer: Tokenizer):
-        self.model = model
+        self.model = model.to(device)
         self.tokenizer = tokenizer
 
     def generate(
@@ -40,6 +41,8 @@ class LLaMA:
         prev_pos = 0
         for cur_pos in range(start_pos, total_len):
             logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
+            # maybe needed
+            logits = logits[:, -1, :]
             if temperature > 0:
                 probs = torch.softmax(logits / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
