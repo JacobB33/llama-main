@@ -19,6 +19,18 @@ parser.add_argument('--clip', type=float, default=1, help='what to clip the grad
 args = parser.parse_args()
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device('cpu')
 
+def eval(model: nn.Module, test_loader: DataLoader, vocab_len: int, epoch: int):
+    with torch.no_grad():
+        criterion = nn.CrossEntropyLoss()
+        for i, (data, labels) in tqdm.tqdm(enumerate(test_loader)):
+            data, labels = data.to(device), labels.to(device)
+            preds = model(data, 0)
+            loss = criterion(preds.reshape(-1, vocab_len), labels.flatten())
+            
+            loss.backward(retain_graph=True)            
+            losses += loss.detach().item()
+        losses /= len(test_loader)
+        print(f'Eval at epoch {epoch} had loss {losses}')
 
 def getTrainDataLoader(vocab: Tokenizer):
     print('loading json')
@@ -41,6 +53,8 @@ def train(model: nn.Module, train_loader: DataLoader, vocab_len: int):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters())
     total_losses = []
+    huuuge_losses = []
+    epoch_validation = []
     print(f'start of train = {torch.cuda.memory_allocated()}')
 
     for epoch in range(args.num_epochs):
@@ -55,11 +69,10 @@ def train(model: nn.Module, train_loader: DataLoader, vocab_len: int):
             loss.backward(retain_graph=True)
             optimizer.step()
             
-            losses += loss.detach().item()
-            if(i % 20 == 0):
+            losses += loss.item()
+            huuuge_losses.append(loss.item())
+            if(i % 100 == 0):
                 print(loss.item())
-            # del loss, data, labels
-            #print(f'memory =  {torch.cuda.memory_allocated()/ 1e9} gb')
 
         losses /= len(train_loader)
         print(f'For epoch {epoch}, there was an average loss of {losses}')
