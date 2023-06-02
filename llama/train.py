@@ -20,6 +20,8 @@ parser.add_argument('--clip', type=float, default=1, help='what to clip the grad
 
 args = parser.parse_args()
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device('cpu')
+import time
+start_time = time.time()    
 
 def eval(model: nn.Module, test_loader: DataLoader, vocab_len: int, epoch: int):
     print(f'running an eval episode {epoch}')
@@ -37,7 +39,7 @@ def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, vo
     model.train()
     model.to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     total_losses = []
     huuuge_losses = []
     epoch_validation = []
@@ -67,12 +69,15 @@ def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, vo
         if not os.path.exists(epoch_save_path):
             os.makedirs(epoch_save_path)
         torch.save(model.state_dict(), f'{epoch_save_path}/model_epoch_{epoch}.pt')
+        plt.cla(); plt.clf()
         plt.plot(total_losses, label='train_loss', color='blue')
         plt.plot(epoch_validation, label='val_loss', color='red')
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
         plt.legend()
         plt.savefig(f'{epoch_save_path}/losses.png')
+        print(f'Training on a 4090 took {time.time() - start_time} seconds')
+
     # Create a plot using plt of the total_losses and teh epoch_validation and save it to args.save_path
     plt.cla(); plt.clf()
     plt.plot(total_losses, label='train_loss', color='blue')
@@ -84,7 +89,6 @@ def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, vo
     
     
     
-    
             
 
 def main():
@@ -92,8 +96,9 @@ def main():
         os.makedirs(args.save_path)
     elif not os.path.isdir(args.save_path):
         raise ValueError(f"{args.save_path} is not a directory")
+
     modelArgs = ModelArgs()
-    modelArgs.n_layers = 4
+    modelArgs.n_layers = 3
     modelArgs.n_heads = 4
     modelArgs.dim = 128
     modelArgs.max_seq_len = args.seq_len
@@ -106,6 +111,7 @@ def main():
     model = Transformer(modelArgs)
     print("Starting Training!")
     train(model, train_loader, val_loader, modelArgs.vocab_size)
+    print(f'Training on a 4090 took {time.time() - start_time} seconds')
     print('amazing 🎉')
 
 
