@@ -1,0 +1,1 @@
+For epoch 63, there was an average loss of 3.2167291609957887 and val of 3.4553163051605225

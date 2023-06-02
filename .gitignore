@@ -6,7 +6,7 @@ val.jsonl.zst
 00.jsonl
 val.jsonl
 7B
-
+model_size_256_run/**/*.pt
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
