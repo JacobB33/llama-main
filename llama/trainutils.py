@@ -1,4 +1,5 @@
 import itertools
+import pickle
 
 import tqdm
 from tokenizer import Tokenizer
@@ -9,18 +10,8 @@ import json
 import numpy as np
 import torch
 
-class TextDataset(Dataset):
-    def __init__(self, sequencified_data, tokens_per_seq: int):
-        self.data = sequencified_data # an list of bpt x num_batches tokinized lists of variable length
-        self.tokens_per_seq = tokens_per_seq
-    def __len__(self):
-        return (len(self.data)-1) // self.tokens_per_seq
-    def __getitem__(self, idx):
-        
-        data, labels = get_batch(self.data, idx* self.tokens_per_seq, self.tokens_per_seq)
-        return data, labels
 
-class DumbDataset(Dataset):
+class EncodedSentenceDataset(Dataset):
     def __init__(self, flat_data: torch.Tensor, sequence_len: int):
         self.data = flat_data # .contiguous()
         self.seq_len = sequence_len
@@ -31,22 +22,33 @@ class DumbDataset(Dataset):
         targets = self.data[idx * self.seq_len + 1: (idx + 1) * self.seq_len + 1]
         return data, targets
 
-def batchify(data: torch.Tensor, batch_size: int):
-    """Creates a bach matrix of batch_size x num batches
-    Args:
-        data torch.tensor: flattened tokinzied data
-        batch_size (int): size of each batch
+def getTrainAndValDataLoaders(batch_size:int,  sequence_length: int, paralel: bool = False):
+    """This method needs to have the two pkl files of the
+    encoded data already on your computer. To do this, you have to download
+    and extract the 00.jsonl file from the pile inside of your llama-main directory
+    Then after that, run createTestValData.py and then you can cal this function.
     """
-    num_batch = len(data) // batch_size
-    data = data[0:num_batch*batch_size]
-    data = data.view(batch_size, -1).T
-    return data
+    train_encodings = pickle.load(open('./train_embed_nonFlat.pkl', 'rb'))
+    val_encodings = pickle.load(open('./val_embed_nonFlat.pkl', 'rb'))
+    
+    train_encodings = torch.tensor(list(itertools.chain.from_iterable(train_encodings)))
+    val_encodings = torch.tensor(list(itertools.chain.from_iterable(val_encodings)))
 
-def get_batch(batched_data:torch.Tensor, batch_num: int, bptt: int):
-    seq_len = min(bptt, len(batched_data) - 1 - batch_num)
-    data = batched_data[batch_num:batch_num+seq_len]
-    target = batched_data[batch_num + 1 : batch_num + seq_len + 1].flatten()
-    return data, target
+    train_ds = EncodedSentenceDataset(train_encodings, sequence_length)
+    test_ds = EncodedSentenceDataset(val_encodings, sequence_length)
+    
+    if not paralel:
+        train_ds = DataLoader(train_ds, batch_size, shuffle=False,)
+        test_ds = DataLoader(test_ds, batch_size, shuffle=False)
+    else:
+        train_ds =  DataLoader(
+            train_ds, batch_size=batch_size, pin_memory=True, 
+            shuffle=False, sampler=DistributedSampler(train_ds))
+        test_ds =  DataLoader(
+            test_ds, batch_size=batch_size, pin_memory=True, 
+            shuffle=False, sampler=DistributedSampler(test_ds))
+    return train_ds, test_ds
+
 
 def loadSentencesFromJson(path_to_json: str) -> List[str]:
     with open(path_to_json, 'r') as f:
@@ -71,7 +73,7 @@ def getTrainDataLoader(vocab: Tokenizer, data_path: str, batch_size: int, seq_le
     print(len(flattened_train))
     # batched_train = batchify(flattened_train, args.seq_len)
     # train_ds = TextDataset(batched_train, args.bptt)
-    train_ds = DumbDataset(flattened_train, seq_len)
+    train_ds = EncodedSentenceDataset(flattened_train, seq_len)
     if not parallel:
         return DataLoader(train_ds, batch_size=batch_size, shuffle=False)
     else:

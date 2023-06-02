@@ -11,6 +11,7 @@ import fire
 parser = argparse.ArgumentParser(description='Train code for transformer')
 parser.add_argument('tokinizer_path', type=str, help='path to tokeinizer')
 parser.add_argument('data_path', type=str, help='path to data.json file')
+parser.add_argument('save_path', type=str, help='Path to folder to save results')
 parser.add_argument('--seq_len', type=int, default=800, help='The amount of tokens per sequence')
 parser.add_argument('--batch_size', type=int, default=16, help='the batch size')
 parser.add_argument('--num_epochs', type=int, default=6, help='number of epochs to train for')
@@ -30,24 +31,8 @@ def eval(model: nn.Module, test_loader: DataLoader, vocab_len: int, epoch: int):
             loss.backward(retain_graph=True)            
             losses += loss.detach().item()
         losses /= len(test_loader)
-        print(f'Eval at epoch {epoch} had loss {losses}')
 
-def getTrainDataLoader(vocab: Tokenizer):
-    print('loading json')
-    train_sentences = loadSentencesFromJson(args.data_path)[:1000]
-    print('encoding sentences')
-    train_encodings = itertools.chain.from_iterable([vocab.encode(s, bos=True, eos=True) for s in tqdm.tqdm(train_sentences)])
-    print('creating dataset')
-    flattened_train = torch.tensor(list(train_encodings)).flatten()
-    print(len(flattened_train))
-    # batched_train = batchify(flattened_train, args.seq_len)
-    # train_ds = TextDataset(batched_train, args.bptt)
-    train_ds = DumbDataset(flattened_train, args.seq_len)
-    print('dumping dataset')
-    pickle.dump(train_ds, open('./val_batched_and_tokened.pkl', 'wb'))
-    return DataLoader(train_ds, batch_size=args.batch_size, shuffle=False)
-
-def train(model: nn.Module, train_loader: DataLoader, vocab_len: int):
+def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, vocab_len: int):
     model.train()
     model.to(device)
     criterion = nn.CrossEntropyLoss()
@@ -55,7 +40,6 @@ def train(model: nn.Module, train_loader: DataLoader, vocab_len: int):
     total_losses = []
     huuuge_losses = []
     epoch_validation = []
-    print(f'start of train = {torch.cuda.memory_allocated()}')
 
     for epoch in range(args.num_epochs):
         losses = 0
@@ -73,32 +57,31 @@ def train(model: nn.Module, train_loader: DataLoader, vocab_len: int):
             huuuge_losses.append(loss.item())
             if(i % 100 == 0):
                 print(loss.item())
-
         losses /= len(train_loader)
-        print(f'For epoch {epoch}, there was an average loss of {losses}')
+        eval_loss = eval(model, val_loader, vocab_len, epoch)
+        print(f'For epoch {epoch}, there was an average loss of {losses} and val of {eval_loss}')
         total_losses.append(losses)
-        torch.save(model.state_dict(), f'./saves/model_epoch_{epoch}.pt')
+        torch.save(model.state_dict(), f'{args.save_path}/model_epoch_{epoch}.pt')
     
             
 
 def main():
     modelArgs = ModelArgs()
-    modelArgs.n_layers = 1
-    modelArgs.n_heads = 1
-    dim = 128
-    
+    modelArgs.n_layers = 4
+    modelArgs.n_heads = 4
+    modelArgs.dim = 128
+    modelArgs.max_seq_len = args.seq_len
     modelArgs.max_batch_size = args.batch_size
+    
     vocab = Tokenizer(model_path=args.tokinizer_path)
     modelArgs.vocab_size = vocab.n_words
-    modelArgs.max_seq_len = 1024
-    print(f'pre train loader = {torch.cuda.memory_allocated()}')
-    train_loader = getTrainDataLoader(vocab)
+    
+    train_loader, val_loader = getTrainAndValDataLoaders(args.batch_size, args.seq_len)
     print(f'post train loader = {torch.cuda.memory_allocated()}')
     model = Transformer(modelArgs)
     print(f'post model = {torch.cuda.memory_allocated()}')
-    train(model, train_loader, modelArgs.vocab_size)
+    train(model, train_loader, val_loader, modelArgs.vocab_size)
     print('done')
 
 if __name__ == "__main__":
-    # fire.Fire(main)
     main()
