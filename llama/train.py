@@ -16,7 +16,7 @@ parser.add_argument('save_path', type=str, help='Path to folder to save results'
 parser.add_argument('--seq_len', type=int, default=800, help='The amount of tokens per sequence')
 parser.add_argument('--batch_size', type=int, default=16, help='the batch size')
 parser.add_argument('--num_epochs', type=int, default=6, help='number of epochs to train for')
-parser.add_argument('--clip', type=float, default=1, help='what to clip the grad by')
+parser.add_argument('--hidden_size', type=float, default=128, help='what model hidden size is')
 
 args = parser.parse_args()
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device('cpu')
@@ -100,7 +100,7 @@ def main():
     modelArgs = ModelArgs()
     modelArgs.n_layers = 3
     modelArgs.n_heads = 4
-    modelArgs.dim = 128
+    modelArgs.dim = args.hidden_size
     modelArgs.max_seq_len = args.seq_len
     modelArgs.max_batch_size = args.batch_size
     
