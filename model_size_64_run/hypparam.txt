@@ -1,0 +1,2 @@
+Training on a 4090 took 8573.061619520187 seconds
+For epoch 22, there was an average loss of 4.604263521145834 and val of 4.812305927276611
