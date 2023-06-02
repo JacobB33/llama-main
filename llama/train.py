@@ -74,6 +74,7 @@ def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, vo
         plt.legend()
         plt.savefig(f'{epoch_save_path}/losses.png')
     # Create a plot using plt of the total_losses and teh epoch_validation and save it to args.save_path
+    plt.cla(); plt.clf()
     plt.plot(total_losses, label='train_loss', color='blue')
     plt.plot(epoch_validation, label='val_loss', color='red')
     plt.xlabel('Epochs')
